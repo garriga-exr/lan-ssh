@@ -1,0 +1,15 @@
+# License: see LICENSE file at root directory of `master` branch
+
+**/*.rs.bk
+*.kate-swp
+*.lock
+*.txz
+*.xz
+
+.rustc_info.json
+
+build
+debug
+release
+target
+tmp

@@ -1,0 +1,6 @@
+{
+    "rust": {
+        "cargo-toml": "Cargo.toml",
+        "main": "src/main.rs"
+    }
+}
