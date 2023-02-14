@@ -59,7 +59,7 @@ use {
 // ╚═════════════════╝
 
 macro_rules! code_name  { () => { "lan-ssh" }}
-macro_rules! version    { () => { "0.2.5" }}
+macro_rules! version    { () => { "0.2.6" }}
 
 /// # Crate name
 pub const NAME: &str = "lan-ssh";
@@ -77,7 +77,7 @@ pub const ID: &str = concat!(
 pub const VERSION: &str = version!();
 
 /// # Crate release date (year/month/day)
-pub const RELEASE_DATE: (u16, u8, u8) = (2022, 12, 9);
+pub const RELEASE_DATE: (u16, u8, u8) = (2023, 2, 14);
 
 /// # Tag, which can be used for logging...
 pub const TAG: &str = concat!(code_name!(), "::fcd3df89::", version!());

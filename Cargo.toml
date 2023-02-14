@@ -27,7 +27,7 @@ publish = false
 edition = '2021'
 
 name = 'lan-ssh'
-version = '0.2.5'
+version = '0.2.6'
 
 [dependencies]
 
