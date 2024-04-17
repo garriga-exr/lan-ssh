@@ -27,33 +27,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #![warn(missing_docs)]
 
-#[macro_use]
-#[allow(unused_macros)]
-mod __;
-mod ssh;
-
-use {
-    core::{
-        str::FromStr,
-        sync::atomic::{self, AtomicBool},
-        time::Duration,
-    },
-    std::{
-        borrow::Cow,
-        collections::HashSet,
-        env,
-        io::{Error, ErrorKind},
-        net::{IpAddr, SocketAddr, TcpStream},
-        path::PathBuf,
-        process::{self, Command},
-        sync::Arc,
-    },
-    blackhole::{BlackHole, OneTime},
-    dia_args::Args,
-    dia_files::{FilePermissions, Permissions},
-    dia_ip_range::{IPv4Range, IPv4RangeIter},
-};
-
 // ╔═════════════════╗
 // ║   IDENTIFIERS   ║
 // ╚═════════════════╝
@@ -85,6 +58,36 @@ pub const TAG: &str = concat!(code_name!(), "::fcd3df89::", version!());
 // ╔════════════════════╗
 // ║   IMPLEMENTATION   ║
 // ╚════════════════════╝
+
+extern crate alloc;
+
+use {
+    core::{
+        borrow::Borrow,
+        str::FromStr,
+        sync::atomic::{self, AtomicBool},
+        time::Duration,
+    },
+    alloc::borrow::Cow,
+    std::{
+        collections::HashSet,
+        env,
+        io::{Error, ErrorKind},
+        net::{IpAddr, SocketAddr, TcpStream},
+        path::PathBuf,
+        process::{self, Command},
+        sync::Arc,
+    },
+    blackhole::{BlackHole, OneTime},
+    dia_args::Args,
+    dia_files::{FilePermissions, Limit, Permissions},
+    dia_ip_range::{IPv4Range, IPv4RangeIter},
+};
+
+#[macro_use]
+#[allow(unused_macros)]
+mod __;
+mod ssh;
 
 /// # Result type used in this crate
 pub type Result<T> = core::result::Result<T, std::io::Error>;
@@ -138,23 +141,23 @@ fn run() -> Result<()> {
     let args = dia_args::parse()?;
     match args.cmd() {
         Some(CMD_HELP) => {
-            ensure_args_are_empty(args.into_sub_cmd().1)?;
+            ensure_args_are_empty(args.try_into_sub_cmd()?.1)?;
             print_help()
         },
         Some(CMD_VERSION) => {
-            ensure_args_are_empty(args.into_sub_cmd().1)?;
+            ensure_args_are_empty(args.try_into_sub_cmd()?.1)?;
             print_version()
         },
-        Some(CMD_CONNECT) => connect(args.into_sub_cmd().1),
-        Some(CMD_REMOVE_KNOWN_LAN_HOSTS) => remove_known_lan_hosts(args.into_sub_cmd().1),
+        Some(CMD_CONNECT) => connect(args.try_into_sub_cmd()?.1),
+        Some(CMD_REMOVE_KNOWN_LAN_HOSTS) => remove_known_lan_hosts(args.try_into_sub_cmd()?.1),
         Some(other) => Err(Error::new(ErrorKind::InvalidInput, format!("Unknown command: {:?}", other))),
         None => Err(Error::new(ErrorKind::Other, "Missing command")),
     }
 }
 
 /// # Ensures arguments are empty
-fn ensure_args_are_empty<A>(args: A) -> Result<()> where A: AsRef<Args> {
-    let args = args.as_ref();
+fn ensure_args_are_empty<A>(args: A) -> Result<()> where A: Borrow<Args> {
+    let args = args.borrow();
     if args.is_empty() {
         Ok(())
     } else {
@@ -212,15 +215,15 @@ fn connect(mut args: Args) -> Result<()> {
 
     let strict_host_key_checking = args.take(OPTION_STRICT_HOST_KEY_CHECKING)?.unwrap_or(OPTION_STRICT_HOST_KEY_CHECKING_DEFAULT);
 
-    let ip_v4_ranges = match args.take_args() {
-        Some(data) => {
-            let mut ip_v4_ranges = HashSet::with_capacity(data.len());
-            for s in data {
-                ip_v4_ranges.insert(IPv4Range::from_str(&s)?);
-            }
-            ip_v4_ranges
-        },
-        None => return Err(Error::new(ErrorKind::InvalidInput, "Missing IPv4 range(s)")),
+    let ip_v4_ranges = {
+        let data = args.take_args()?;
+        match data.len() {
+            usize::MIN => return Err(Error::new(ErrorKind::InvalidInput, "Missing IPv4 range(s)")),
+            count => data.into_iter().try_fold(HashSet::with_capacity(count), |mut result, next| {
+                result.insert(IPv4Range::from_str(&next)?);
+                Result::Ok(result)
+            })?,
+        }
     };
 
     ensure_args_are_empty(args)?;
@@ -301,7 +304,7 @@ fn remove_known_lan_hosts(args: Args) -> Result<()> {
     let file = PathBuf::from(env::var("HOME").map_err(|e| Error::new(ErrorKind::Other, e))?)
         .join(ssh::HOME_DIR_NAME).join(ssh::KNOWN_HOSTS_FILE_NAME);
 
-    let data = dia_files::read_file_to_string(&file, Some(1024 * 1024 * 9))?;
+    let data = Limit::read_file_to_string(&file, 1024 * 1024 * 9)?;
     let data_hash = HASH.hash(&data);
 
     let mut new_data = String::with_capacity(data.len());

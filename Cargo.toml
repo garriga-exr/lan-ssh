@@ -32,7 +32,7 @@ version = '0.2.6'
 [dependencies]
 
 blackhole = '>= 0.20.2, < 0.21'
-dia-args = '>= 0.59.4, < 0.60'
-dia-files = '>= 0.17.2, < 0.18'
-dia-ip-range = { version='>= 0.9.1, < 0.10', features=['iter', 'std'] }
+dia-args = '>= 0.60.2, < 0.61'
+dia-files = '>= 0.20.1, < 0.21'
+dia-ip-range = { version='>= 0.10, < 0.11', features=['iter', 'std'] }
 zeros = '>= 16, < 17'
