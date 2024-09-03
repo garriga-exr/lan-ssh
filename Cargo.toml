@@ -33,6 +33,6 @@ version = '0.2.6'
 
 blackhole = '>= 0.20.2, < 0.21'
 dia-args = '>= 0.60.2, < 0.61'
-dia-files = '>= 0.22, < 0.23'
+dia-files = '>= 0.22.1, < 0.23'
 dia-ip-range = { version='>= 0.10, < 0.11', features=['iter', 'std'] }
 zeros = '>= 16, < 17'
