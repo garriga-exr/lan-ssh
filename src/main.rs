@@ -64,10 +64,14 @@ extern crate alloc;
 use {
     core::{
         borrow::Borrow,
+        iter,
         str::FromStr,
         time::Duration,
     },
-    alloc::borrow::Cow,
+    alloc::{
+        borrow::Cow,
+        collections::BTreeSet,
+    },
     std::{
         collections::HashSet,
         env,
@@ -78,7 +82,7 @@ use {
         sync::mpsc,
     },
     blackhole::{BlackHole, OneTime},
-    dia_args::Args,
+    dia_args::{Answer, Args},
     dia_files::{FilePermissions, Limit, Permissions},
     dia_ip_range::{IPv4Range, IPv4RangeIter},
 };
@@ -281,7 +285,7 @@ fn connect(mut args: Args) -> Result<()> {
     Ok(())
 }
 
-fn find_available_hosts<I>(ip_v4_ranges: I) -> Result<HashSet<IpAddr>> where I: IntoIterator<Item=IPv4Range> {
+fn find_available_hosts<I>(ip_v4_ranges: I) -> Result<BTreeSet<IpAddr>> where I: IntoIterator<Item=IPv4Range> {
     let (sender, receiver) = mpsc::channel();
     let blackhole = BlackHole::make(1024)?;
     let buffer = IPv4RangeIter::new_buffer();
@@ -311,7 +315,13 @@ fn find_available_hosts<I>(ip_v4_ranges: I) -> Result<HashSet<IpAddr>> where I: 
 }
 
 fn ask_user_to_pick_a_host<I>(ips: I) -> Result<Option<IpAddr>> where I: IntoIterator<Item=IpAddr> {
-    todo!()
+    let ips = ips.into_iter().collect::<Vec<_>>();
+    let answers = ips.into_iter().map(|ip| Answer::UserDefined(ip)).chain(iter::once(Answer::Cancel(None))).collect::<Vec<_>>();
+    match dia_args::ask_user("Please select a host:", &answers)? {
+        Answer::UserDefined(ip) => Ok(Some(*ip)),
+        Answer::Cancel(_) => Ok(None),
+        _ => Err(err!()),
+    }
 }
 
 /// # Removes known LAN hosts
