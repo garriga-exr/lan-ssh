@@ -65,7 +65,6 @@ use {
     core::{
         borrow::Borrow,
         str::FromStr,
-        sync::atomic::{self, AtomicBool},
         time::Duration,
     },
     alloc::borrow::Cow,
@@ -76,13 +75,30 @@ use {
         net::{IpAddr, SocketAddr, TcpStream},
         path::PathBuf,
         process::{self, Command},
-        sync::Arc,
+        sync::mpsc,
     },
     blackhole::{BlackHole, OneTime},
     dia_args::Args,
     dia_files::{FilePermissions, Limit, Permissions},
     dia_ip_range::{IPv4Range, IPv4RangeIter},
 };
+
+/// # Wrapper for format!(), which prefixes your optional message with: module_path!(), line!()
+macro_rules! __ {
+    ($($arg: tt)+) => {
+        format!("[{module_path}-{line}] {msg}", module_path=module_path!(), line=line!(), msg=format!($($arg)+))
+    };
+    () => {
+        __!("(internal error)")
+    };
+}
+
+/// # Makes new std::io::Error
+macro_rules! err {
+    ($kind: path, $($arg: tt)+) => { std::io::Error::new($kind, __!($($arg)+)) };
+    ($($arg: tt)+) => { err!(std::io::ErrorKind::Other, $($arg)+) };
+    () => { std::io::Error::new(std::io::ErrorKind::Other, __!()) };
+}
 
 #[macro_use]
 #[allow(unused_macros)]
@@ -203,8 +219,6 @@ fn print_help() -> Result<()> {
 
 /// # Connects
 fn connect(mut args: Args) -> Result<()> {
-    const ATOMIC_ORDERING: atomic::Ordering = atomic::Ordering::Relaxed;
-
     let user = args.take::<String>(OPTION_USER)?.ok_or_else(|| Error::new(ErrorKind::InvalidInput, format!("Missing {:?}", OPTION_USER)))?;
     if user.is_empty() || user.chars().any(|c| match c {
         'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' => false,
@@ -228,71 +242,76 @@ fn connect(mut args: Args) -> Result<()> {
 
     ensure_args_are_empty(args)?;
 
+    let available_hosts = find_available_hosts(ip_v4_ranges)?;
+    let ip = match available_hosts.len() {
+        usize::MIN => return Err(err!("Found no available hosts")),
+        1 => available_hosts.into_iter().next().ok_or_else(|| err!())?,
+        _ => match ask_user_to_pick_a_host(available_hosts)? {
+            None => return Ok(()),
+            Some(ip) => ip,
+        },
+    };
+
+    dia_args::lock_write_out(__b!("-> {ip}\n"));
+
+    let mut cmd = Command::new(ssh::APP);
+    if strict_host_key_checking == false && (
+        ip.is_loopback() || match &ip {
+            IpAddr::V4(ip) => ip.is_private(),
+            IpAddr::V6(_) => false,
+        } || {
+            let ip = ip.to_string();
+            ["::1", "localhost"].iter().any(|full| &ip == full)
+            || ["192.168.", "127.", "fe80:"].iter().any(|prefix| ip.starts_with(prefix))
+        }
+    ) {
+        cmd.args(&["-o", "StrictHostKeyChecking=off"]);
+    }
+    cmd.arg(format!("{user}@{ip}", user=user, ip=ip));
+    match cmd.status() {
+        Ok(status) => if status.success() == false {
+            match status.code() {
+                Some(code) => process::exit(code),
+                None => dia_args::lock_write_err(__w!("-> {status}\n", status=status)),
+            };
+        },
+        Err(err) => dia_args::lock_write_err(__w!("Failed to run {cmd:?}: {err}\n", cmd=cmd, err=err)),
+    };
+
+    Ok(())
+}
+
+fn find_available_hosts<I>(ip_v4_ranges: I) -> Result<HashSet<IpAddr>> where I: IntoIterator<Item=IPv4Range> {
+    let (sender, receiver) = mpsc::channel();
     let blackhole = BlackHole::make(1024)?;
-
-    let user = Arc::new(user);
-    let found = Arc::new(AtomicBool::new(false));
-
     let buffer = IPv4RangeIter::new_buffer();
     for ip_v4_range in ip_v4_ranges.into_iter() {
         for ip in IPv4RangeIter::new(ip_v4_range, &buffer) {
             let address = SocketAddr::new(ip.clone(), ssh::DEFAULT_PORT);
-            let user = user.clone();
-            let found = found.clone();
-            match blackhole.throw(OneTime::new(move || {
-                if found.load(ATOMIC_ORDERING) {
-                    return;
-                }
-
+            let sender = sender.clone();
+            if let Some(job) = blackhole.throw(OneTime::new(move || {
                 if TcpStream::connect_timeout(&address, Duration::from_millis(300)).is_ok() {
-                    if found.compare_exchange(false, true, ATOMIC_ORDERING, ATOMIC_ORDERING).is_err() {
-                        dia_args::lock_write_err(__w!("Another thread is working on {address}\n", address=address));
-                        return;
+                    dia_args::lock_write_out(format!("{address}: online\n"));
+                    if sender.send(ip).is_err() {
+                        // Ignore it
                     }
-
-                    dia_args::lock_write_out(__b!("{address}\n", address=address));
-
-                    let mut cmd = Command::new(ssh::APP);
-                    if strict_host_key_checking == false && (
-                        ip.is_loopback() || match &ip {
-                            IpAddr::V4(ip) => ip.is_private(),
-                            IpAddr::V6(_) => false,
-                        } || {
-                            let ip = ip.to_string();
-                            ["::1", "localhost"].iter().any(|full| &ip == full)
-                            || ["192.168.", "127.", "fe80:"].iter().any(|prefix| ip.starts_with(prefix))
-                        }
-                    ) {
-                        cmd.args(&["-o", "StrictHostKeyChecking=off"]);
-                    }
-                    cmd.arg(format!("{user}@{ip}", user=user, ip=ip));
-                    match cmd.status() {
-                        Ok(status) => if status.success() == false {
-                            match status.code() {
-                                Some(code) => process::exit(code),
-                                None => dia_args::lock_write_err(__w!("-> {status}\n", status=status)),
-                            };
-                        },
-                        Err(err) => dia_args::lock_write_err(__w!("Failed to run {cmd:?}: {err}\n", cmd=cmd, err=err)),
-                    };
                 } else {
-                    if found.load(ATOMIC_ORDERING) == false {
-                        dia_args::lock_write_err(__w!("{address}\n", address=address));
-                    }
+                    dia_args::lock_write_err(__w!("{address}: offline\n"));
                 }
-            })) {
-                Ok(job) => if let Some(job) = job {
-                    blackhole::run_to_end(job);
-                },
-                Err(err) => {
-                    dia_args::lock_write_err(__w!("Blackhole is exploded: {err:?}\nStopping server...\n", err=err));
-                    break;
-                },
-            };
+            }))? {
+                blackhole::run_to_end(job);
+            }
         }
     }
+    drop(sender);
 
-    blackhole.escape_on_idle()
+    let result = receiver.into_iter().collect();
+    blackhole.escape_on_idle()?;
+    Ok(result)
+}
+
+fn ask_user_to_pick_a_host<I>(ips: I) -> Result<Option<IpAddr>> where I: IntoIterator<Item=IpAddr> {
+    todo!()
 }
 
 /// # Removes known LAN hosts
