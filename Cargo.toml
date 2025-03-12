@@ -24,7 +24,7 @@
 [package]
 
 publish = false
-edition = '2021'
+edition = '2024'
 
 name = 'lan-ssh'
 version = '0.3.1'
