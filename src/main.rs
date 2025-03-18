@@ -32,7 +32,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 // ╚═════════════════╝
 
 macro_rules! code_name  { () => { "lan-ssh" }}
-macro_rules! version    { () => { "0.3.1" }}
+macro_rules! version    { () => { "0.3.2" }}
 
 /// # Crate name
 pub const NAME: &str = "lan-ssh";
@@ -50,7 +50,7 @@ pub const ID: &str = concat!(
 pub const VERSION: &str = version!();
 
 /// # Crate release date (year/month/day)
-pub const RELEASE_DATE: (u16, u8, u8) = (2025, 3, 5);
+pub const RELEASE_DATE: (u16, u8, u8) = (2025, 3, 18);
 
 /// # Tag, which can be used for logging...
 pub const TAG: &str = concat!(code_name!(), "::fcd3df89::", version!());
