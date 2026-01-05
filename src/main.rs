@@ -85,6 +85,7 @@ use {
     dia_args::{Answer, Args},
     dia_files::{FilePermissions, Limit, Permissions},
     dia_ip_range::{IPv4Range, IPv4RangeIter},
+    fake_log::{__b, __w},
 };
 
 /// # Wrapper for format!(), which prefixes your optional message with: module_path!(), line!()
@@ -104,9 +105,6 @@ macro_rules! err {
     () => { std::io::Error::new(std::io::ErrorKind::Other, __!()) };
 }
 
-#[macro_use]
-#[allow(unused_macros)]
-mod __;
 mod ssh;
 
 /// # Result type used in this crate
