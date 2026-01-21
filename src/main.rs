@@ -85,7 +85,7 @@ use {
     dia_args::{Answer, Args},
     dia_files::{FilePermissions, Limit, Permissions},
     dia_ip_range::{IPv4Range, IPv4RangeIter},
-    fake_log::{__b, __w},
+    fake_log::{__b, __err, __w},
 };
 
 /// # Wrapper for format!(), which prefixes your optional message with: module_path!(), line!()
@@ -147,7 +147,7 @@ const OPTION_STRICT_HOST_KEY_CHECKING_DEFAULT: bool = true;
 /// # Main
 fn main() -> Result<()> {
     if let Err(err) = run() {
-        dia_args::lock_write_err(format!("{}\n", err));
+        __err!("{}\n", err);
         process::exit(1);
     }
 

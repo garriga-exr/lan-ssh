@@ -37,3 +37,5 @@ dia-files = '>= 0.24, < 0.25'
 dia-ip-range = { version='>= 0.10, < 0.11', features=['iter', 'std'] }
 fake-log = { version='>= 0.1, < 0.2', registry='local' }
 zeros = '>= 19, < 20'
+
+tokio = { version='>= 1.48, < 2', features=['net', 'rt-multi-thread'] }
