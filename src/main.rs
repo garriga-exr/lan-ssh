@@ -86,6 +86,7 @@ use {
     dia_files::{FilePermissions, Limit, Permissions},
     dia_ip_range::{IPv4Range, IPv4RangeIter},
     fake_log::{__b, __err, __w},
+    tokio::runtime::Runtime,
 };
 
 /// # Wrapper for format!(), which prefixes your optional message with: module_path!(), line!()
@@ -146,7 +147,8 @@ const OPTION_STRICT_HOST_KEY_CHECKING_DEFAULT: bool = true;
 
 /// # Main
 fn main() -> Result<()> {
-    if let Err(err) = run() {
+    let runtime = Runtime::new()?;
+    if let Err(err) = runtime.block_on(run()) {
         __err!("{}\n", err);
         process::exit(1);
     }
@@ -155,7 +157,7 @@ fn main() -> Result<()> {
 }
 
 /// # Runs the program
-fn run() -> Result<()> {
+async fn run() -> Result<()> {
     let args = dia_args::parse()?;
     match args.cmd() {
         Some(CMD_HELP) => {
