@@ -168,7 +168,7 @@ async fn run() -> Result<()> {
             ensure_args_are_empty(args.try_into_sub_cmd()?.1)?;
             print_version()
         },
-        Some(CMD_CONNECT) => connect(args.try_into_sub_cmd()?.1),
+        Some(CMD_CONNECT) => connect(args.try_into_sub_cmd()?.1).await,
         Some(CMD_REMOVE_KNOWN_LAN_HOSTS) => remove_known_lan_hosts(args.try_into_sub_cmd()?.1),
         Some(other) => Err(Error::new(ErrorKind::InvalidInput, format!("Unknown command: {:?}", other))),
         None => Err(Error::new(ErrorKind::Other, "Missing command")),
@@ -222,7 +222,7 @@ fn print_help() -> Result<()> {
 }
 
 /// # Connects
-fn connect(mut args: Args) -> Result<()> {
+async fn connect(mut args: Args) -> Result<()> {
     let user = args.take::<String>(OPTION_USER)?.ok_or_else(|| Error::new(ErrorKind::InvalidInput, format!("Missing {:?}", OPTION_USER)))?;
     if user.is_empty() || user.chars().any(|c| match c {
         'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' => false,
@@ -246,7 +246,7 @@ fn connect(mut args: Args) -> Result<()> {
 
     ensure_args_are_empty(args)?;
 
-    let available_hosts = find_available_hosts(ip_v4_ranges)?;
+    let available_hosts = find_available_hosts(ip_v4_ranges).await?;
     let ip = match available_hosts.len() {
         usize::MIN => return Err(err!("Found no available hosts")),
         1 => available_hosts.into_iter().next().ok_or_else(|| err!())?,
@@ -285,7 +285,7 @@ fn connect(mut args: Args) -> Result<()> {
     Ok(())
 }
 
-fn find_available_hosts<I>(ip_v4_ranges: I) -> Result<BTreeSet<IpAddr>> where I: IntoIterator<Item=IPv4Range> {
+async fn find_available_hosts<I>(ip_v4_ranges: I) -> Result<BTreeSet<IpAddr>> where I: IntoIterator<Item=IPv4Range> {
     let (sender, receiver) = mpsc::channel();
     let blackhole = BlackHole::make(1024)?;
     let buffer = IPv4RangeIter::new_buffer();
