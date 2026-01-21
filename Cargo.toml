@@ -31,11 +31,10 @@ version = '0.3.3'
 
 [dependencies]
 
-blackhole = '>= 0.20.2, < 0.21'
 dia-args = '>= 0.61, < 0.62'
 dia-files = '>= 0.24, < 0.25'
 dia-ip-range = { version='>= 0.10, < 0.11', features=['iter', 'std'] }
 fake-log = { version='>= 0.1, < 0.2', registry='local' }
 zeros = '>= 19, < 20'
 
-tokio = { version='>= 1.48, < 2', features=['net', 'rt-multi-thread'] }
+tokio = { version='>= 1.48, < 2', features=['net', 'rt-multi-thread', 'sync', 'time'] }

@@ -76,17 +76,21 @@ use {
         collections::HashSet,
         env,
         io::{Error, ErrorKind},
-        net::{IpAddr, SocketAddr, TcpStream},
+        net::{IpAddr, SocketAddr},
         path::PathBuf,
         process::{self, Command},
-        sync::mpsc,
     },
-    blackhole::{BlackHole, OneTime},
     dia_args::{Answer, Args},
     dia_files::{FilePermissions, Limit, Permissions},
     dia_ip_range::{IPv4Range, IPv4RangeIter},
     fake_log::{__b, __err, __w},
-    tokio::runtime::Runtime,
+    tokio::{
+        net::TcpStream,
+        runtime::Runtime,
+        sync::mpsc,
+        task,
+        time,
+    },
 };
 
 /// # Wrapper for format!(), which prefixes your optional message with: module_path!(), line!()
@@ -286,31 +290,27 @@ async fn connect(mut args: Args) -> Result<()> {
 }
 
 async fn find_available_hosts<I>(ip_v4_ranges: I) -> Result<BTreeSet<IpAddr>> where I: IntoIterator<Item=IPv4Range> {
-    let (sender, receiver) = mpsc::channel();
-    let blackhole = BlackHole::make(1024)?;
+    let (sender, mut receiver) = mpsc::unbounded_channel();
     let buffer = IPv4RangeIter::new_buffer();
     for ip_v4_range in ip_v4_ranges.into_iter() {
         for ip in IPv4RangeIter::new(ip_v4_range, &buffer) {
             let address = SocketAddr::new(ip.clone(), ssh::DEFAULT_PORT);
             let sender = sender.clone();
-            if let Some(job) = blackhole.throw(OneTime::new(move || {
-                if TcpStream::connect_timeout(&address, Duration::from_millis(300)).is_ok() {
-                    dia_args::lock_write_out(format!("{address}: online\n"));
+            task::spawn(async move {
+                if time::timeout(Duration::from_millis(300), TcpStream::connect(&address)).await.is_ok() {
                     if sender.send(ip).is_err() {
                         // Ignore it
                     }
-                } else {
-                    dia_args::lock_write_err(__w!("{address}: offline\n"));
                 }
-            }))? {
-                blackhole::run_to_end(job);
-            }
+            });
         }
     }
     drop(sender);
 
-    let result = receiver.into_iter().collect();
-    blackhole.escape_on_idle()?;
+    let mut result = BTreeSet::new();
+    while let Some(ip) = receiver.recv().await {
+        result.insert(ip);
+    }
     Ok(result)
 }
 
