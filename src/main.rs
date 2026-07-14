@@ -173,7 +173,7 @@ async fn run() -> Result<()> {
             print_version()
         },
         Some(CMD_CONNECT) => connect(args.try_into_sub_cmd()?.1).await,
-        Some(CMD_REMOVE_KNOWN_LAN_HOSTS) => remove_known_lan_hosts(args.try_into_sub_cmd()?.1),
+        Some(CMD_REMOVE_KNOWN_LAN_HOSTS) => remove_known_lan_hosts(args.try_into_sub_cmd()?.1).await,
         Some(other) => Err(Error::new(ErrorKind::InvalidInput, format!("Unknown command: {:?}", other))),
         None => Err(Error::new(ErrorKind::Other, "Missing command")),
     }
@@ -325,7 +325,7 @@ fn ask_user_to_pick_a_host<I>(ips: I) -> Result<Option<IpAddr>> where I: IntoIte
 }
 
 /// # Removes known LAN hosts
-fn remove_known_lan_hosts(args: Args) -> Result<()> {
+async fn remove_known_lan_hosts(args: Args) -> Result<()> {
     const HASH: zeros::keccak::Hash = zeros::keccak::Hash::Sha3_512;
 
     ensure_args_are_empty(args)?;
@@ -333,8 +333,8 @@ fn remove_known_lan_hosts(args: Args) -> Result<()> {
     let file = PathBuf::from(env::var("HOME").map_err(|e| Error::new(ErrorKind::Other, e))?)
         .join(ssh::HOME_DIR_NAME).join(ssh::KNOWN_HOSTS_FILE_NAME);
 
-    let data = Limit::read_file_to_string(&file, 1024 * 1024 * 9)?;
-    let data_hash = HASH.hash(&data);
+    let data = Limit::read_file_to_string(&file, 1024 * 1024 * 9).await?;
+    let data_hash = HASH.hash(&data).await;
 
     let mut new_data = String::with_capacity(data.len());
     let mut reports = String::with_capacity(data.len() / 3);
@@ -349,14 +349,14 @@ fn remove_known_lan_hosts(args: Args) -> Result<()> {
         }
     }
 
-    if HASH.hash(&new_data) != data_hash {
+    if HASH.hash(&new_data).await != data_hash {
         dia_args::lock_write_out(format!("Removed:\n\n{}\n", reports));
         dia_files::write_file(
             file,
             Some(FilePermissions::new(Permissions::ReadWrite, Permissions::None, Permissions::None)),
             new_data,
             TMP_FILE_SUFFIX
-        )
+        ).await
     } else {
         dia_args::lock_write_out("Nothing changed\n");
         Ok(())
